@@ -1,0 +1,296 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeDrop</title>
+
+<style>
+*{box-sizing:border-box}
+
+body{
+ margin:0;
+ padding:18px;
+ background:#0b1120;
+ color:white;
+ font-family:Arial,sans-serif
+}
+
+.container{max-width:750px;margin:auto}
+
+h1{text-align:center;color:#60a5fa}
+
+.card{
+ background:#162238;
+ padding:16px;
+ border-radius:12px;
+ margin:16px 0;
+ overflow-wrap:anywhere
+}
+
+input,textarea{
+ width:100%;
+ padding:12px;
+ margin:7px 0;
+ border:1px solid #334155;
+ border-radius:8px;
+ background:#0b1120;
+ color:white;
+ font-size:15px
+}
+
+textarea{
+ height:220px;
+ font-family:monospace
+}
+
+button{
+ width:100%;
+ padding:12px;
+ margin-top:8px;
+ border:0;
+ border-radius:8px;
+ background:#2563eb;
+ color:white;
+ font-weight:bold;
+ font-size:15px;
+ cursor:pointer
+}
+
+button:disabled{opacity:.5}
+
+pre{
+ background:#080d16;
+ color:#86efac;
+ padding:12px;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere;
+ overflow-x:auto;
+ border-radius:8px
+}
+
+.small{color:#a8b7ce;font-size:13px}
+
+.code-hidden{display:none}
+
+.view-btn{background:#0d9488}
+.copy-btn{background:#2563eb}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>⌨ CodeDrop</h1>
+<p style="text-align:center">Submit your code online</p>
+
+<div class="card">
+<h2>Submit Code</h2>
+
+<input id="student" maxlength="80" placeholder="Your name">
+<input id="project" maxlength="100" placeholder="Project name">
+
+<textarea id="code" maxlength="100000"
+placeholder="Paste your code here"></textarea>
+
+<button id="submitBtn">SUBMIT CODE</button>
+<p id="status" class="small"></p>
+</div>
+
+<div class="card">
+<h2>All Submissions</h2>
+
+<button id="refreshBtn">REFRESH SUBMISSIONS</button>
+<p id="count" class="small"></p>
+<div id="submissions"></div>
+</div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+
+import {
+  getDatabase,
+  ref,
+  push,
+  set,
+  get
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDEFpZNJHQrO0ZRD_MR9fHGzcy-So0kUfg",
+  authDomain: "codedrop-8d54b.firebaseapp.com",
+  databaseURL: "https://codedrop-8d54b-default-rtdb.firebaseio.com",
+  projectId: "codedrop-8d54b",
+  storageBucket: "codedrop-8d54b.firebasestorage.app",
+  messagingSenderId: "756662816204",
+  appId: "1:756662816204:web:bb6b0cc6a5dca9fce5a169",
+  measurementId: "G-VD1B84EB2E"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const student = document.getElementById("student");
+const project = document.getElementById("project");
+const code = document.getElementById("code");
+const status = document.getElementById("status");
+const submitBtn = document.getElementById("submitBtn");
+const list = document.getElementById("submissions");
+const count = document.getElementById("count");
+
+submitBtn.addEventListener("click", submitCode);
+
+document.getElementById("refreshBtn")
+  .addEventListener("click", loadCodes);
+
+async function submitCode() {
+  const name = student.value.trim();
+  const title = project.value.trim();
+  const source = code.value;
+
+  if (!name || !title || !source.trim()) {
+    status.textContent = "Please fill in all fields.";
+    return;
+  }
+
+  submitBtn.disabled = true;
+  status.textContent = "Submitting...";
+
+  try {
+    const newSubmission = push(ref(db, "submittedCodes"));
+
+    await set(newSubmission, {
+      name: name,
+      project: title,
+      code: source,
+      submittedAt: Date.now()
+    });
+
+    student.value = "";
+    project.value = "";
+    code.value = "";
+
+    status.textContent = "Submitted successfully!";
+
+    await loadCodes();
+
+  } catch (error) {
+    console.error(error);
+    status.textContent =
+      "Submission failed. Check your internet and Firebase Rules.";
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function loadCodes() {
+  list.replaceChildren();
+  count.textContent = "";
+  list.textContent = "Loading submissions...";
+
+  try {
+    const snapshot = await get(ref(db, "submittedCodes"));
+
+    list.replaceChildren();
+
+    if (!snapshot.exists()) {
+      list.textContent = "No submissions yet.";
+      return;
+    }
+
+    const entries = Object.entries(snapshot.val()).sort(
+      (a, b) =>
+        (b[1].submittedAt || 0) -
+        (a[1].submittedAt || 0)
+    );
+
+    count.textContent = entries.length + " submission(s)";
+
+    entries.forEach(([id, item]) => {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const heading = document.createElement("h3");
+      heading.textContent = item.project || "Untitled project";
+
+      const author = document.createElement("p");
+      author.textContent =
+        "Submitted by: " + (item.name || "Unknown");
+
+      const date = document.createElement("p");
+      date.className = "small";
+      date.textContent = item.submittedAt
+        ? new Date(item.submittedAt).toLocaleString()
+        : "";
+
+      // Code is hidden when the submission first appears.
+      const pre = document.createElement("pre");
+      pre.textContent = item.code || "";
+      pre.className = "code-hidden";
+
+      // View and hide button.
+      const view = document.createElement("button");
+      view.className = "view-btn";
+      view.textContent = "VIEW CODE";
+
+      view.addEventListener("click", () => {
+        const hidden = pre.classList.contains("code-hidden");
+
+        if (hidden) {
+          pre.classList.remove("code-hidden");
+          view.textContent = "HIDE CODE";
+        } else {
+          pre.classList.add("code-hidden");
+          view.textContent = "VIEW CODE";
+        }
+      });
+
+      // Copy button.
+      const copy = document.createElement("button");
+      copy.className = "copy-btn";
+      copy.textContent = "COPY CODE";
+
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(item.code || "");
+          copy.textContent = "COPIED!";
+
+          setTimeout(() => {
+            copy.textContent = "COPY CODE";
+          }, 1500);
+
+        } catch (error) {
+          console.error(error);
+          copy.textContent = "Copy unavailable";
+        }
+      });
+
+      card.append(
+        heading,
+        author,
+        date,
+        view,
+        pre,
+        copy
+      );
+
+      list.appendChild(card);
+    });
+
+  } catch (error) {
+    console.error(error);
+    list.replaceChildren();
+
+    list.textContent =
+      "Cannot load submissions. Check your Firebase Rules and internet.";
+  }
+}
+
+loadCodes();
+</script>
+
+</body>
+</html>
